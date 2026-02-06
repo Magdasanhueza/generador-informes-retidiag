@@ -114,6 +114,15 @@ DERIVACIONES = {
     "OTROS": "DERIVAR OFTALMOLOGÍA",
 }
 
+# Textos para el resumen Excel (columna Diagnóstico)
+TEXTOS_RESUMEN_DIAGNOSTICO = {
+    "NORMAL": "Evaluado Normal",
+    "DG NORMAL": "Diagnósticado Normal",
+    "RD": "Retinopatía Diabética",
+    "OTROS": "Diagnósticado Otros",
+    "CATARATA": "Sospecha De Cataratas",
+}
+
 
 def crear_estilos():
     """Crea y retorna los estilos para el PDF."""
@@ -748,8 +757,9 @@ def generar_resumen_pacientes(df, establecimiento, fecha_examen, output_dir):
         cell.font = data_font
         cell.alignment = center_align
 
-        # Diagnóstico (de RESULTADO FINAL)
-        diagnostico = str(paciente.get('RESULTADO FINAL', '')).strip() if not pd.isna(paciente.get('RESULTADO FINAL')) else ''
+        # Diagnóstico (de RESULTADO FINAL) - convertir a texto descriptivo
+        diagnostico_raw = str(paciente.get('RESULTADO FINAL', '')).strip().upper() if not pd.isna(paciente.get('RESULTADO FINAL')) else ''
+        diagnostico = TEXTOS_RESUMEN_DIAGNOSTICO.get(diagnostico_raw, diagnostico_raw.title())
         cell = ws.cell(row=row, column=7, value=diagnostico)
         cell.border = thin_border
         cell.fill = fill
