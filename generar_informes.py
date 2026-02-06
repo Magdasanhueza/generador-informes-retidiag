@@ -10,8 +10,12 @@ informes PDF individuales según el diagnóstico.
 
 import os
 import sys
+import shutil
 from datetime import datetime
 import pandas as pd
+from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+from openpyxl.drawing.image import Image as XLImage
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -24,6 +28,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGOS_DIR = os.path.join(BASE_DIR, "imagenes", "logos")
 FIRMAS_DIR = os.path.join(BASE_DIR, "imagenes", "firmas")
 OUTPUT_DIR = "/Users/magda/Documents/informes retidiag"
+PLANTILLA_RESUMEN = os.path.join(BASE_DIR, "plantilla_resumen_pacientes.xls")
 
 # Crear directorio de salida si no existe
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -34,6 +39,7 @@ LOGOS_ESTABLECIMIENTO = {
     "PENALOLEN": "logo_penalolen.jpg",
     "LAS CONDES": "logo_las_condes.png",
     "EL MONTE": "logo_el_monte.png",
+    "PROVIDENCIA": "logo_providencia.jpg",
 }
 
 # Mapeo de oftalmólogos a firmas
@@ -618,7 +624,174 @@ def procesar_excel(excel_path, carpeta_salida=None):
     print(f"  - Ubicación: {output_dir}")
     print(f"{'='*60}\n")
 
+    # Generar archivo resumen de pacientes
+    generar_resumen_pacientes(df, establecimiento, fecha_examen, output_dir)
+
     return True
+
+
+def generar_resumen_pacientes(df, establecimiento, fecha_examen, output_dir):
+    """Genera el archivo Excel resumen de pacientes con formato y logo."""
+
+    print("Generando resumen de pacientes...")
+
+    # Crear nuevo workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Resumen Pacientes"
+
+    # Colores
+    azul_header = PatternFill(start_color="2c5282", end_color="2c5282", fill_type="solid")
+    azul_claro = PatternFill(start_color="e8f0fe", end_color="e8f0fe", fill_type="solid")
+    blanco = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
+
+    # Estilos
+    title_font = Font(bold=True, size=16, color="2c5282")
+    header_font = Font(bold=True, size=10, color="FFFFFF")
+    data_font = Font(size=10)
+    thin_border = Border(
+        left=Side(style='thin', color='2c5282'),
+        right=Side(style='thin', color='2c5282'),
+        top=Side(style='thin', color='2c5282'),
+        bottom=Side(style='thin', color='2c5282')
+    )
+    center_align = Alignment(horizontal='center', vertical='center')
+    left_align = Alignment(horizontal='left', vertical='center')
+
+    # Agregar logo de Retidiag (filas 1-4)
+    logo_path = os.path.join(LOGOS_DIR, "logo_retidiag.jpg")
+    if os.path.exists(logo_path):
+        img = XLImage(logo_path)
+        img.width = 150
+        img.height = 45
+        ws.add_image(img, 'A1')
+
+    # Ajustar altura de filas para el logo
+    for row in range(1, 5):
+        ws.row_dimensions[row].height = 15
+
+    # Fila 6: Nombre del establecimiento
+    ws.merge_cells('A6:J6')
+    cell_estab = ws.cell(row=6, column=1, value=establecimiento)
+    cell_estab.font = title_font
+    cell_estab.alignment = center_align
+    ws.row_dimensions[6].height = 25
+
+    # Fila 7: Encabezados
+    encabezados = ["N°", "Fecha", "Centro", "Rut", "Nombre", "Edad", "Diagnóstico", "Ojo Derecho", "Ojo Izquierdo", "Observación"]
+    for col, encabezado in enumerate(encabezados, 1):
+        cell = ws.cell(row=7, column=col, value=encabezado)
+        cell.font = header_font
+        cell.fill = azul_header
+        cell.border = thin_border
+        cell.alignment = center_align
+    ws.row_dimensions[7].height = 20
+
+    # Fila 8 en adelante: Datos de pacientes
+    for idx, (_, paciente) in enumerate(df.iterrows(), 1):
+        row = idx + 7  # Empezar en fila 8
+
+        # Alternar colores de fila
+        fill = azul_claro if idx % 2 == 0 else blanco
+
+        # N°
+        cell = ws.cell(row=row, column=1, value=idx)
+        cell.border = thin_border
+        cell.fill = fill
+        cell.font = data_font
+        cell.alignment = center_align
+
+        # Fecha
+        fecha = paciente.get('FECHA', '')
+        if not pd.isna(fecha):
+            if hasattr(fecha, 'strftime'):
+                fecha = fecha.strftime("%d/%m/%Y")
+            else:
+                fecha = str(fecha)[:10]
+        else:
+            fecha = ""
+        cell = ws.cell(row=row, column=2, value=fecha)
+        cell.border = thin_border
+        cell.fill = fill
+        cell.font = data_font
+        cell.alignment = center_align
+
+        # Centro
+        centro = str(paciente.get('ESTABLECIMIENTO', '')).strip() if not pd.isna(paciente.get('ESTABLECIMIENTO')) else ''
+        cell = ws.cell(row=row, column=3, value=centro)
+        cell.border = thin_border
+        cell.fill = fill
+        cell.font = data_font
+        cell.alignment = left_align
+
+        # Rut
+        rut = str(paciente.get('RUT', '')).strip() if not pd.isna(paciente.get('RUT')) else ''
+        cell = ws.cell(row=row, column=4, value=rut)
+        cell.border = thin_border
+        cell.fill = fill
+        cell.font = data_font
+        cell.alignment = center_align
+
+        # Nombre
+        nombre = str(paciente.get('NOMBRE PACIENTE', '')).strip() if not pd.isna(paciente.get('NOMBRE PACIENTE')) else ''
+        cell = ws.cell(row=row, column=5, value=nombre)
+        cell.border = thin_border
+        cell.fill = fill
+        cell.font = data_font
+        cell.alignment = left_align
+
+        # Edad
+        edad = int(paciente.get('EDAD', 0)) if not pd.isna(paciente.get('EDAD')) else ''
+        cell = ws.cell(row=row, column=6, value=edad)
+        cell.border = thin_border
+        cell.fill = fill
+        cell.font = data_font
+        cell.alignment = center_align
+
+        # Diagnóstico (de RESULTADO FINAL)
+        diagnostico = str(paciente.get('RESULTADO FINAL', '')).strip() if not pd.isna(paciente.get('RESULTADO FINAL')) else ''
+        cell = ws.cell(row=row, column=7, value=diagnostico)
+        cell.border = thin_border
+        cell.fill = fill
+        cell.font = data_font
+        cell.alignment = center_align
+
+        # Ojo Derecho
+        ojo_derecho = str(paciente.get('DETALLE OD', '')).strip() if not pd.isna(paciente.get('DETALLE OD')) else ''
+        cell = ws.cell(row=row, column=8, value=ojo_derecho)
+        cell.border = thin_border
+        cell.fill = fill
+        cell.font = data_font
+        cell.alignment = center_align
+
+        # Ojo Izquierdo
+        ojo_izquierdo = str(paciente.get('DETALLE OI', '')).strip() if not pd.isna(paciente.get('DETALLE OI')) else ''
+        cell = ws.cell(row=row, column=9, value=ojo_izquierdo)
+        cell.border = thin_border
+        cell.fill = fill
+        cell.font = data_font
+        cell.alignment = center_align
+
+        # Observación (desde campo Derivacion)
+        derivacion = str(paciente.get('Derivacion', '')).strip() if not pd.isna(paciente.get('Derivacion')) else ''
+        cell = ws.cell(row=row, column=10, value=derivacion)
+        cell.border = thin_border
+        cell.fill = fill
+        cell.font = data_font
+        cell.alignment = left_align
+
+    # Ajustar ancho de columnas
+    anchos = {'A': 5, 'B': 12, 'C': 30, 'D': 12, 'E': 28, 'F': 6, 'G': 12, 'H': 12, 'I': 12, 'J': 25}
+    for col, ancho in anchos.items():
+        ws.column_dimensions[col].width = ancho
+
+    # Guardar archivo
+    establecimiento_limpio = limpiar_nombre_archivo(establecimiento)
+    nombre_archivo = f"{establecimiento_limpio}_{fecha_examen}.xlsx"
+    ruta_archivo = os.path.join(output_dir, nombre_archivo)
+
+    wb.save(ruta_archivo)
+    print(f"✓ Resumen guardado: {nombre_archivo}")
 
 
 def main():
